@@ -1,0 +1,18 @@
+# Ne jamais versionner la clé API
+.env
+
+# Fichiers générés
+Bilan_Genere.docx
+Bilan_*.docx
+bilan_brut.json
+bilan_structure.json
+context_redige.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# macOS
+.DS_Store
