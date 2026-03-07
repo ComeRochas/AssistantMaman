@@ -287,13 +287,14 @@ def rediger_section(cle_champ: str, valeur_champ, contexte_patient: str) -> str:
     {PROMPTS_STYLE.get(cle_champ, "Style professionnel, neutre et bienveillant.")}
     
     CONSIGNES :
+    - Sois neutre et bienveillante.
     - Ne jamais inventer d'informations. Sois factuelle et précise, sans extrapoler. Si une information n'est pas mentionnée, ne la suppose pas.
-    - Transforme les notes télégraphiques en phrases fluides.
-    - Utilise le "Je" professionnel ou des tournures impersonnelles ("On observe..."). Si possible, privilégie les phrases directes ("Diego présente...").
+    - Transforme les notes en phrases fluides.
+    - Utilise des tournures directes ("Diego présente..."), sans faire de phrases impersonnelles ("On note que Diego présente...").
     """
     
     response = _get_client().chat.completions.create(
-        model="gpt-4o-mini", # Change ici en "gpt-4o" pour plus de précisions
+        model="gpt-5.2", 
         messages=[
             {"role": "system", "content": prompt_systeme},
             {"role": "user", "content": f"Données à rédiger : {json.dumps(valeur_champ, ensure_ascii=False)}"}

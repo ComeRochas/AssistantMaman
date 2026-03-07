@@ -23,12 +23,12 @@ def _get_client() -> OpenAI:
 def transformer_notes_en_json(texte_notes: str) -> BilanPsychomoteur:
     """
     Prend le texte brut des notes et retourne un objet validé BilanPsychomoteur.
-    Utilise le mode 'Structured Outputs' de GPT-4o.
+    Utilise GPT-5.2.
     """
     print("⏳ Analyse des notes et structuration des données en cours...")
     
     completion = _get_client().beta.chat.completions.parse(
-        model="gpt-4o-2024-08-06", # Ce modèle est CRITIQUE pour le respect du JSON
+        model="gpt-5.2",
         messages=[
             {
                 "role": "system",

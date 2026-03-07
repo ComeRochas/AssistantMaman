@@ -175,7 +175,7 @@ if st.session_state.etape == 1:
             }
             st.session_state.notes_brutes = notes_brutes
 
-            with st.spinner("⏳ L'IA analyse et structure vos notes… (20 à 40 secondes)"):
+            with st.spinner("⏳ L'IA analyse et structure vos notes… (1 à 2 minutes)"):
                 try:
                     bilan: BilanPsychomoteur = transformer_notes_en_json(notes_brutes)
 
@@ -444,7 +444,7 @@ elif st.session_state.etape == 2:
                 },
             }
 
-            with st.spinner("✍️ L'IA rédige les paragraphes cliniques… (1 à 2 minutes)"):
+            with st.spinner("✍️ L'IA rédige les paragraphes cliniques… (4 à 5 minutes)"):
                 try:
                     bilan_obj = BilanPsychomoteur(**edited)
                     context_redige = orchestrer_redaction(bilan_obj)
