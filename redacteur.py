@@ -57,7 +57,6 @@ PROMPTS_STYLE = {
     
     "proprete": (
         "Utilise les termes 'acquisition de la maîtrise sphinctérienne', 'continence diurne/nocturne'. "
-        "Note les difficultés (rétention, encoprésie). "
         "Exemple de style : 'Cette étape a été difficile. Il y a des épisodes de rétention de selles, Diego a tendance à se retenir [...] Un gastroentérologue a éliminé tout problème fonctionnel.'"
     ),
     

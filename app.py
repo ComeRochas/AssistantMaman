@@ -1,6 +1,7 @@
 import streamlit as st
 import io
 import os
+import copy
 from dotenv import load_dotenv
 from docxtpl import DocxTemplate
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -70,10 +71,112 @@ defaults = {
     "identite_form": {},
     "word_bytes": None,
     "nom_fichier": "Bilan_Genere.docx",
+    "historique": [],
+    "historique_index": -1,
 }
 for cle, valeur in defaults.items():
     if cle not in st.session_state:
         st.session_state[cle] = valeur
+
+
+HISTORY_BASE_KEYS = (
+    "etape",
+    "bilan_dict",
+    "notes_brutes",
+    "identite_form",
+    "word_bytes",
+    "nom_fichier",
+)
+MAX_HISTORY_STATES = 20
+
+
+def construire_snapshot(label: str) -> dict:
+    return {
+        "label": label,
+        "base": {
+            cle: copy.deepcopy(st.session_state.get(cle))
+            for cle in HISTORY_BASE_KEYS
+        },
+        "editions": {
+            cle: copy.deepcopy(valeur)
+            for cle, valeur in st.session_state.items()
+            if cle.startswith("edit_")
+        },
+    }
+
+
+def sauvegarder_historique(label: str):
+    historique = st.session_state.historique[: st.session_state.historique_index + 1]
+    historique.append(construire_snapshot(label))
+    if len(historique) > MAX_HISTORY_STATES:
+        historique = historique[-MAX_HISTORY_STATES:]
+    st.session_state.historique = historique
+    st.session_state.historique_index = len(historique) - 1
+
+
+def restaurer_historique(index: int):
+    snapshot = st.session_state.historique[index]
+
+    for cle in [k for k in list(st.session_state.keys()) if k.startswith("edit_")]:
+        del st.session_state[cle]
+
+    for cle, valeur in snapshot.get("base", {}).items():
+        st.session_state[cle] = copy.deepcopy(valeur)
+
+    for cle, valeur in snapshot.get("editions", {}).items():
+        st.session_state[cle] = copy.deepcopy(valeur)
+
+    st.session_state.historique_index = index
+
+
+def reinitialiser_historique():
+    st.session_state.historique = []
+    st.session_state.historique_index = -1
+
+
+with st.sidebar:
+    st.divider()
+    st.header("🕘 Historique privé")
+    st.caption(
+        "Historique conservé uniquement en mémoire pour cette session. "
+        "Aucune donnée d'historique n'est écrite sur disque, en base ou dans le dépôt."
+    )
+
+    historique = st.session_state.historique
+    index_courant = st.session_state.historique_index
+
+    col_undo, col_redo = st.columns(2)
+    with col_undo:
+        if st.button(
+            "↩️ Annuler",
+            use_container_width=True,
+            disabled=index_courant <= 0,
+        ):
+            restaurer_historique(index_courant - 1)
+            st.rerun()
+
+    with col_redo:
+        if st.button(
+            "↪️ Rétablir",
+            use_container_width=True,
+            disabled=index_courant < 0 or index_courant >= len(historique) - 1,
+        ):
+            restaurer_historique(index_courant + 1)
+            st.rerun()
+
+    if historique:
+        options = list(range(len(historique)))
+        selected_index = st.selectbox(
+            "Points de reprise",
+            options=options,
+            index=index_courant if index_courant >= 0 else len(options) - 1,
+            format_func=lambda idx: f"Point {idx + 1} · {historique[idx].get('label', 'Sauvegarde')}",
+        )
+        if st.button("Restaurer ce point", use_container_width=True):
+            restaurer_historique(selected_index)
+            st.rerun()
+    else:
+        st.caption("Aucun point de reprise enregistré pour cette session.")
 
 # ============================================================
 # EN-TÊTE
@@ -152,43 +255,61 @@ if st.session_state.etape == 1:
 
     st.divider()
 
-    if st.button("🔍 Analyser et Structurer les notes", type="primary", use_container_width=True):
-        # --- Validation des champs obligatoires ---
-        manquants = []
-        if not prenom.strip():             manquants.append("Prénom")
-        if not date_naissance.strip():     manquants.append("Date de naissance")
-        if not date_bilan.strip():         manquants.append("Date du bilan")
-        if not classe_ecole.strip():       manquants.append("Niveau scolaire")
-        if not motif_consultation.strip(): manquants.append("Motif de la consultation")
-        if not notes_brutes.strip():       manquants.append("Notes brutes")
+    col_save, col_analyse = st.columns([1, 3], gap="medium")
 
-        if manquants:
-            st.error(f"Veuillez renseigner les champs obligatoires : **{', '.join(manquants)}**")
-        else:
-            # Sauvegarde dans le session_state
+    with col_save:
+        if st.button("💾 Point de reprise", use_container_width=True):
             st.session_state.identite_form = {
-                "prenom":             prenom.strip(),
-                "date_naissance":     date_naissance.strip(),
-                "date_bilan":         date_bilan.strip(),
-                "classe_ecole":       classe_ecole.strip(),
+                "prenom": prenom.strip(),
+                "date_naissance": date_naissance.strip(),
+                "date_bilan": date_bilan.strip(),
+                "classe_ecole": classe_ecole.strip(),
                 "motif_consultation": motif_consultation.strip(),
             }
             st.session_state.notes_brutes = notes_brutes
+            sauvegarder_historique("Étape 1 · Saisie")
+            st.success("Point de reprise enregistré en mémoire.")
 
-            with st.spinner("⏳ L'IA analyse et structure vos notes… (1 à 2 minutes)"):
-                try:
-                    bilan: BilanPsychomoteur = transformer_notes_en_json(notes_brutes)
+    with col_analyse:
+        if st.button("🔍 Analyser et Structurer les notes", type="primary", use_container_width=True):
+            # --- Validation des champs obligatoires ---
+            manquants = []
+            if not prenom.strip():             manquants.append("Prénom")
+            if not date_naissance.strip():     manquants.append("Date de naissance")
+            if not date_bilan.strip():         manquants.append("Date du bilan")
+            if not classe_ecole.strip():       manquants.append("Niveau scolaire")
+            if not motif_consultation.strip(): manquants.append("Motif de la consultation")
+            if not notes_brutes.strip():       manquants.append("Notes brutes")
 
-                    # On injecte l'identité saisie dans le formulaire (ne pas laisser l'IA la deviner)
-                    bilan_dict = bilan.model_dump()
-                    bilan_dict["identite_patient"] = st.session_state.identite_form
+            if manquants:
+                st.error(f"Veuillez renseigner les champs obligatoires : **{', '.join(manquants)}**")
+            else:
+                # Sauvegarde dans le session_state
+                st.session_state.identite_form = {
+                    "prenom":             prenom.strip(),
+                    "date_naissance":     date_naissance.strip(),
+                    "date_bilan":         date_bilan.strip(),
+                    "classe_ecole":       classe_ecole.strip(),
+                    "motif_consultation": motif_consultation.strip(),
+                }
+                st.session_state.notes_brutes = notes_brutes
+                sauvegarder_historique("Étape 1 · Avant analyse")
 
-                    st.session_state.bilan_dict = bilan_dict
-                    st.session_state.etape = 2
-                    st.rerun()
+                with st.spinner("⏳ L'IA analyse et structure vos notes… (1 à 2 minutes)"):
+                    try:
+                        bilan: BilanPsychomoteur = transformer_notes_en_json(notes_brutes)
 
-                except Exception as exc:
-                    st.error(f"❌ Erreur lors de l'analyse IA : {exc}")
+                        # On injecte l'identité saisie dans le formulaire (ne pas laisser l'IA la deviner)
+                        bilan_dict = bilan.model_dump()
+                        bilan_dict["identite_patient"] = st.session_state.identite_form
+
+                        st.session_state.bilan_dict = bilan_dict
+                        st.session_state.etape = 2
+                        sauvegarder_historique("Étape 2 · Notes structurées")
+                        st.rerun()
+
+                    except Exception as exc:
+                        st.error(f"❌ Erreur lors de l'analyse IA : {exc}")
 
 
 # ============================================================
@@ -201,6 +322,10 @@ elif st.session_state.etape == 2:
         "💡 L'IA a structuré vos notes ci-dessous. "
         "Relisez et corrigez chaque section si nécessaire, puis validez pour lancer la rédaction."
     )
+
+    if st.button("💾 Enregistrer un point de reprise", use_container_width=True):
+        sauvegarder_historique("Étape 2 · Vérification en cours")
+        st.success("Point de reprise enregistré en mémoire.")
 
     bilan_dict: dict = st.session_state.bilan_dict
 
@@ -348,6 +473,7 @@ elif st.session_state.etape == 2:
 
     with btn_retour:
         if st.button("◀ Retour", use_container_width=True):
+            sauvegarder_historique("Étape 2 · Avant retour")
             st.session_state.etape = 1
             st.rerun()
 
@@ -444,8 +570,9 @@ elif st.session_state.etape == 2:
                 },
             }
 
-            with st.spinner("✍️ L'IA rédige les paragraphes cliniques… (4 à 5 minutes)"):
+            with st.spinner("✍️ L'IA rédige les paragraphes cliniques… (1 à 2 minutes)"):
                 try:
+                    sauvegarder_historique("Étape 2 · Avant rédaction")
                     bilan_obj = BilanPsychomoteur(**edited)
                     context_redige = orchestrer_redaction(bilan_obj)
 
@@ -479,6 +606,7 @@ elif st.session_state.etape == 2:
                     st.session_state.nom_fichier = f"Bilan_{prenom_clean}.docx"
                     st.session_state.bilan_dict = edited  # mise à jour avec les données éditées
                     st.session_state.etape = 3
+                    sauvegarder_historique("Étape 3 · Bilan généré")
                     st.rerun()
 
                 except Exception as exc:
@@ -502,7 +630,7 @@ elif st.session_state.etape == 3:
 
     st.success(f"Le bilan de **{nom_affiche}** a été rédigé ! Téléchargez le fichier Word ci-dessous.")
 
-    col_dl, col_new = st.columns([3, 1], gap="medium")
+    col_dl, col_back, col_new = st.columns([3, 1, 1], gap="medium")
 
     with col_dl:
         st.download_button(
@@ -513,6 +641,11 @@ elif st.session_state.etape == 3:
             type="primary",
             use_container_width=True,
         )
+
+    with col_back:
+        if st.button("↩️ Vérification", use_container_width=True):
+            st.session_state.etape = 2
+            st.rerun()
 
     with col_new:
         if st.button("🔄  Nouveau bilan", use_container_width=True):
@@ -526,6 +659,7 @@ elif st.session_state.etape == 3:
             st.session_state.identite_form = {}
             st.session_state.word_bytes = None
             st.session_state.nom_fichier = "Bilan_Genere.docx"
+            reinitialiser_historique()
             st.rerun()
 
     st.divider()
